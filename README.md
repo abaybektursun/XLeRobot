@@ -40,6 +40,7 @@
 ---
 
 # 📰 News 
+- 2025-12-02: Dual-wheel version released! Have a more stable and accurate differential-wheel base for a cheaper price. (Default servo motor, optional scooter brushless Motor available at a similar price)
 - 2025-11-11: **[Temporary VLA tutorial](https://xlerobot.readthedocs.io/en/latest/software/getting_started/RL_VLA.html#vision-language-action-vla-training-for-xlerobot)** out. Official version out soon.
 - 2025-09-22: **Hardware Assembly Video Tutorial** availabe at [Youtube](https://www.youtube.com/watch?v=upB1CEFeOlk) and [Bilibili](https://www.bilibili.com/video/BV1AGWFzUEJf/). Thanks WOWROBO for making this video!
 - 2025-09-09: **Developer Assembly kit (excluding battery and IKEA cart) ready for purchase** in [China (Taobao) for **3699￥**](https://e.tb.cn/h.SZFbBgZABZ8zRPe?tk=ba514rTBRjQ) and [world-wide for **579\$**](https://shop.wowrobo.com/products/xlerobot-dual-arm-mobile-household-robot-kit?variant=47297659961561). _(In collaboration with **Wowrobo**, one of the official collaborators with Huggingface SO101 arm, they have sold 5k+ SO101 arm worldwide with great customer feedback.)_
