@@ -250,57 +250,12 @@ python -m lerobot.scripts.augment_dataset \
 
 ## Phase 5: Cloud Training with π0.5
 
-### 5.0 Cloud Abstraction Architecture
-
 > **Note:** LeRobot has [async inference](https://huggingface.co/docs/lerobot/en/async) for deployment,
-> but **no built-in cloud training** ([issue #2172](https://github.com/huggingface/lerobot/issues/2172)).
+> but no built-in cloud training. We use Modal directly.
 
-```
-xlerobot_cloud/
-├── __init__.py
-├── base.py              # Abstract CloudProvider interface
-├── config.py            # TrainingConfig, InferenceConfig
-├── providers/
-│   ├── modal_provider.py    # Modal (default)
-│   ├── runpod_provider.py   # RunPod (future)
-│   └── lambda_provider.py   # Lambda Labs (future)
-└── cli.py               # xlerobot-train, xlerobot-serve
-```
+### 5.1 Modal Training Script
 
-### 5.1 Training Config
-
-```python
-from dataclasses import dataclass
-from typing import Optional
-
-@dataclass
-class TrainingConfig:
-    # Dataset
-    dataset_repo_id: str
-
-    # Model
-    policy_type: str = "pi05"  # NOT "pi0"!
-    pretrained_path: str = "lerobot/pi05_base"
-    output_repo_id: Optional[str] = None
-
-    # Training
-    batch_size: int = 32
-    steps: int = 3000
-    learning_rate: float = 1e-5
-
-    # Hardware
-    gpu_type: str = "H100"
-    num_gpus: int = 1
-    timeout_hours: int = 2
-
-    # Checkpointing
-    save_freq: int = 500
-    resume_from: Optional[str] = None
-```
-
-### 5.2 Modal Training Script
-
-Create `xlerobot_cloud/providers/modal_provider.py`:
+Create `modal_train.py`:
 
 ```python
 import modal
@@ -374,24 +329,24 @@ def main(
     print(f"Training complete: {result}")
 ```
 
-### 5.3 Run Training
+### 5.2 Run Training
 
 ```bash
 # Single GPU
-modal run xlerobot_cloud/providers/modal_provider.py \
+modal run modal_train.py \
   --dataset=${HF_USER}/xlerobot_task \
   --output=${HF_USER}/pi05_xlerobot \
   --steps=3000
 
-# Multi-GPU (modify modal script to use gpu="H100:2")
-modal run xlerobot_cloud/providers/modal_provider.py \
+# Multi-GPU (change gpu="H100" to gpu="H100:2" in script)
+modal run modal_train.py \
   --dataset=${HF_USER}/xlerobot_task \
   --output=${HF_USER}/pi05_xlerobot \
-  --steps=1500 \  # Halved for 2x GPUs
-  --batch_size=32  # Effective: 64
+  --steps=1500 \
+  --batch-size=64
 ```
 
-### 5.4 Local Multi-GPU Training (Alternative)
+### 5.3 Local Multi-GPU Training (Alternative)
 
 ```bash
 # If you have local GPUs
@@ -410,7 +365,7 @@ accelerate launch \
   --policy.gradient_checkpointing=true
 ```
 
-### 5.5 Training Parameters
+### 5.4 Training Parameters
 
 | Parameter | Single H100 | 2× A100 40GB | Notes |
 |-----------|-------------|--------------|-------|
@@ -419,11 +374,11 @@ accelerate launch \
 | `learning_rate` | 1e-5 | 1e-5 | Don't scale |
 | `save_freq` | 500 | 500 | Checkpoint frequency |
 
-### 5.6 Error Handling & Resume
+### 5.5 Error Handling & Resume
 
 ```bash
-# Resume from checkpoint
-modal run xlerobot_cloud/providers/modal_provider.py \
+# Resume from checkpoint (add --resume flag to modal_train.py)
+modal run modal_train.py \
   --dataset=${HF_USER}/xlerobot_task \
   --output=${HF_USER}/pi05_xlerobot \
   --resume=/outputs/model/checkpoint-1500
@@ -516,8 +471,9 @@ python -m lerobot.async_inference.robot_client \
 
 ### 7.3 Modal Inference Server
 
+Create `modal_inference.py`:
+
 ```python
-# xlerobot_cloud/providers/modal_inference.py
 import modal
 
 app = modal.App("xlerobot-inference")
@@ -540,6 +496,12 @@ def serve():
         "--host=0.0.0.0",
         "--port=8080"
     ])
+```
+
+Run it:
+```bash
+modal deploy modal_inference.py
+# Returns URL like: https://xlerobot-inference--serve.modal.run
 ```
 
 ---
