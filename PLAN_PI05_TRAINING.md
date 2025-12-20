@@ -1,385 +1,636 @@
 # XLeRobot π0.5 VLA Training Plan
 
-## Status: π0.6 NOT YET AVAILABLE
+## Status: Using π0.5 (π0.6 NOT YET AVAILABLE)
 As of Dec 2025, [π0.6 is not open-sourced](https://github.com/Physical-Intelligence/openpi/issues/791).
-We will use **π0.5** (released Sept 2025) which has better open-world generalization than π0.
+We use **π0.5** ([lerobot/pi05_base](https://huggingface.co/lerobot/pi05_base)) with open-world generalization.
 
 ---
 
 ## Overview
 
-| Phase | Task | Time Estimate |
-|-------|------|---------------|
-| 1 | Environment Setup | 1-2 hours |
-| 2 | Data Collection (50-100 episodes) | 2-4 hours |
-| 3 | Data Augmentation | 30 min |
-| 4 | Cloud Training | 1-2 hours |
-| 5 | Deployment & Testing | 1 hour |
+| Phase | Task | Time |
+|-------|------|------|
+| 1 | Environment Setup | 1-2h |
+| 2 | Camera & Hardware Verification | 30min |
+| 3 | Data Collection (50-100 episodes) | 2-4h |
+| 4 | Data Preparation & Augmentation | 30min |
+| 5 | Cloud Training | 1-2h |
+| 6 | Validation & Evaluation | 30min |
+| 7 | Deployment | 30min |
+
+**Total: ~6-10 hours**
 
 ---
 
 ## Phase 1: Environment Setup
 
-### 1.1 Local Machine (Data Collection)
+### 1.1 Local Machine (Data Collection & Deployment)
 
 ```bash
 # Activate lerobot environment
 conda activate lerobot
 
-# Install π0 dependencies
+# Verify lerobot version (need 0.4.2+)
+python -c "import lerobot; print(lerobot.__version__)"
+
+# Install π0.5 dependencies
 pip install -e ".[pi]"
+# OR for lerobot 0.4.x:
+pip install "lerobot[pi]@git+https://github.com/huggingface/lerobot.git"
+
+# Install async inference dependencies
+pip install -e ".[async]"
 
 # Verify xlerobot connection
-python examples/simple_xlerobot_test.py
+cd /home/abay/Projects/xle_robot/XLeRobot/software
+source /home/abay/miniconda3/etc/profile.d/conda.sh && conda activate lerobot
+echo "" | python examples/simple_xlerobot_test.py
 ```
 
-### 1.2 Cloud Setup (Training)
-
-**Recommended: [Modal](https://modal.com)** - Simple, mature, pay-per-use
-- H100 80GB: ~$4/hour
-- A100 80GB: ~$2/hour
-
-**Alternatives:**
-- [RunPod](https://runpod.io) - A100 from $1.89/hr, good availability
-- [Lambda Labs](https://lambdalabs.com) - H100/H200, enterprise-focused
-
-**GPU Requirements:**
-| Method | VRAM Required |
-|--------|---------------|
-| LoRA fine-tune | 22.5+ GB (A100 40GB works) |
-| Full fine-tune | 70+ GB (H100 80GB recommended) |
-
-### 1.3 Modal Setup
+### 1.2 HuggingFace Setup
 
 ```bash
-pip install modal
-modal setup  # Authenticate
+# Login to HuggingFace
+huggingface-cli login
 
-# Create modal app for training
-modal run train_pi05.py
+# Set your username
+export HF_USER=$(huggingface-cli whoami | head -1)
+echo "HF_USER: $HF_USER"
+```
+
+### 1.3 Cloud Setup (Training)
+
+| Provider | GPU | Price/hr | Best For |
+|----------|-----|----------|----------|
+| [Modal](https://modal.com) | H100 80GB | ~$4 | Simple, serverless |
+| [RunPod](https://runpod.io) | A100 80GB | ~$2 | Cost-effective |
+| [Lambda](https://lambdalabs.com) | H100/H200 | ~$3 | Enterprise |
+
+**GPU Requirements:**
+
+| Method | VRAM | Recommended GPU |
+|--------|------|-----------------|
+| LoRA fine-tune | 22.5+ GB | A100 40GB |
+| Full fine-tune | 70+ GB | H100 80GB |
+| Multi-GPU (2x) | 2×40GB | 2× A100 40GB |
+
+```bash
+# Modal setup
+pip install modal
+modal setup
+modal secret create huggingface-token HF_TOKEN=hf_xxxxx
 ```
 
 ---
 
-## Phase 2: Data Collection
+## Phase 2: Camera & Hardware Verification
 
-### 2.1 Camera Setup
-
-XLeRobot uses 3 cameras:
-- Left wrist camera
-- Right wrist camera
-- Head camera
+### 2.1 Detect Available Cameras
 
 ```bash
-# Verify cameras
+# Find all cameras
 python -c "
-from lerobot.cameras.opencv import OpenCVCamera
-for i in range(10):
+import subprocess
+result = subprocess.run(['v4l2-ctl', '--list-devices'], capture_output=True, text=True)
+print(result.stdout)
+"
+
+# Or use lerobot's camera finder
+python -m lerobot.find_cameras
+```
+
+### 2.2 Test Each Camera
+
+```bash
+# Test cameras individually (adjust indices based on your setup)
+python -c "
+from lerobot.cameras.opencv import OpenCVCamera, OpenCVCameraConfig
+
+cameras = {
+    'head': 0,      # Adjust these indices
+    'left_wrist': 2,
+    'right_wrist': 4,
+}
+
+for name, idx in cameras.items():
     try:
-        cam = OpenCVCamera(i)
+        cfg = OpenCVCameraConfig(index_or_path=idx, width=640, height=480, fps=30)
+        cam = OpenCVCamera(cfg)
         cam.connect()
-        print(f'Camera {i}: OK')
+        frame = cam.async_read()
+        print(f'{name} (index {idx}): OK - shape {frame.shape}')
         cam.disconnect()
-    except: pass
+    except Exception as e:
+        print(f'{name} (index {idx}): FAILED - {e}')
 "
 ```
 
-### 2.2 Recording with VR Teleoperation (Recommended)
+### 2.3 Document Your Camera Setup
 
-Per [XLeRobot docs](https://xlerobot.readthedocs.io/en/latest/software/getting_started/RL_VLA.html):
+Create a camera config file for consistency:
 
 ```bash
-# Start VR server first (on Quest 3)
-# Then record:
+# Save your camera config
+cat > camera_config.json << 'EOF'
+{
+    "head": {"type": "opencv", "index_or_path": 0, "width": 640, "height": 480, "fps": 30},
+    "left_wrist": {"type": "opencv", "index_or_path": 2, "width": 640, "height": 480, "fps": 30},
+    "right_wrist": {"type": "opencv", "index_or_path": 4, "width": 640, "height": 480, "fps": 30}
+}
+EOF
+```
 
-python -m lerobot.record \
+---
+
+## Phase 3: Data Collection
+
+### 3.1 Option A: VR Teleoperation (Recommended)
+
+**Prerequisites:**
+- Quest 3 headset with XLeVR app
+- XLeRobot VR teleop module installed
+
+```bash
+# Copy xlerobot VR teleop to lerobot (one-time setup)
+cp -r /home/abay/Projects/xle_robot/XLeRobot/software/src/teleporators/xlerobot_vr \
+      /home/abay/miniconda3/envs/lerobot/lib/python3.10/site-packages/lerobot/teleoperators/
+
+# Start VR server (in separate terminal)
+# Follow XLeVR docs: https://xlerobot.readthedocs.io/en/latest/simulation/getting_started/vr_sim.html
+
+# Record dataset
+python /home/abay/miniconda3/envs/lerobot/lib/python3.10/site-packages/lerobot/scripts/record.py \
   --robot.type=xlerobot \
   --robot.port1=/dev/ttyACM0 \
   --robot.port2=/dev/ttyACM1 \
   --robot.id=my_xlerobot \
   --robot.cameras='{
-    left_wrist: {"type": "opencv", "index_or_path": 2, "width": 640, "height": 480},
-    right_wrist: {"type": "opencv", "index_or_path": 4, "width": 640, "height": 480},
-    head: {"type": "opencv", "index_or_path": 6, "width": 640, "height": 480}
+    head: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},
+    left_wrist: {type: opencv, index_or_path: 2, width: 640, height: 480, fps: 30},
+    right_wrist: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}
   }' \
   --teleop.type=xlerobot_vr \
-  --dataset.repo_id=${HF_USER}/xlerobot_laundry \
+  --dataset.repo_id=${HF_USER}/xlerobot_task \
   --dataset.num_episodes=50 \
-  --dataset.single_task="Fold the shirt"
+  --dataset.single_task="Fold the shirt" \
+  --dataset.push_to_hub=true \
+  --display_data=true
 ```
 
-### 2.3 Recording with Leader Arms (Alternative)
-
-If no VR, use dual leader arms:
+### 3.2 Option B: Single Arm with Leader Arm
 
 ```bash
-python -m lerobot.record \
-  --robot.type=xlerobot \
-  --robot.port1=/dev/ttyACM0 \
-  --robot.port2=/dev/ttyACM1 \
-  --teleop.type=xlerobot_leader \
-  --teleop.left_port=/dev/ttyACM2 \
-  --teleop.right_port=/dev/ttyACM3 \
-  --dataset.repo_id=${HF_USER}/xlerobot_laundry \
+# For single-arm tasks (right arm example)
+lerobot-record \
+  --robot.type=so101_follower \
+  --robot.port=/dev/ttyACM1 \
+  --robot.id=right_arm \
+  --robot.cameras='{
+    head: {type: opencv, index_or_path: 0, width: 640, height: 480, fps: 30},
+    wrist: {type: opencv, index_or_path: 4, width: 640, height: 480, fps: 30}
+  }' \
+  --teleop.type=so101_leader \
+  --teleop.port=/dev/ttyACM2 \
+  --teleop.id=leader_arm \
+  --dataset.repo_id=${HF_USER}/xlerobot_single_arm \
   --dataset.num_episodes=50 \
-  --dataset.single_task="Fold the shirt"
+  --dataset.single_task="Pick up the cup" \
+  --dataset.push_to_hub=true
 ```
 
-### 2.4 Data Quality Tips
+### 3.3 Data Quality Checklist
 
-1. **Keep head camera angle consistent** - Policy performance drops otherwise
-2. **Record 50-100 episodes** - More is better, but 50 can work
-3. **Vary starting positions slightly** - Improves generalization
-4. **Include failure recovery** - Helps policy learn corrections
+- [ ] **Consistent head camera angle** - Keep servos at same position
+- [ ] **50-100 episodes minimum** - More is better
+- [ ] **Vary starting positions** - Slight variations improve generalization
+- [ ] **Include recovery from errors** - Don't reset on small mistakes
+- [ ] **Good lighting** - Consistent, no harsh shadows
+- [ ] **Clean background** - Minimize distractions
 
 ---
 
-## Phase 3: Data Augmentation (4x Data)
+## Phase 4: Data Preparation & Augmentation
+
+### 4.1 Verify Dataset
 
 ```bash
-python lerobot/scripts/augment_dataset.py \
-  --dataset.repo_id=${HF_USER}/xlerobot_laundry \
-  --output.repo_id=${HF_USER}/xlerobot_laundry_augmented
+# Check dataset on HuggingFace
+python -c "
+from lerobot.datasets import LeRobotDataset
+ds = LeRobotDataset('${HF_USER}/xlerobot_task')
+print(f'Episodes: {ds.num_episodes}')
+print(f'Frames: {len(ds)}')
+print(f'Features: {list(ds.meta.features.keys())}')
+"
 ```
 
-This flips footage and reverses action polarities, effectively 4x your data.
+### 4.2 Add Quantile Statistics (Required for π0.5)
+
+```bash
+# π0.5 requires quantile normalization
+python -m lerobot.scripts.augment_dataset_quantile_stats \
+  --repo-id=${HF_USER}/xlerobot_task
+```
+
+**Alternative:** Train with explicit normalization mapping:
+```bash
+--policy.normalization_mapping='{"ACTION": "MEAN_STD", "STATE": "MEAN_STD", "VISUAL": "IDENTITY"}'
+```
+
+### 4.3 Data Augmentation (Optional, 4x Data)
+
+```bash
+# Flip and mirror augmentation
+python -m lerobot.scripts.augment_dataset \
+  --dataset.repo_id=${HF_USER}/xlerobot_task \
+  --output.repo_id=${HF_USER}/xlerobot_task_augmented
+```
 
 ---
 
-## Phase 4: Cloud Training with π0.5
+## Phase 5: Cloud Training with π0.5
 
-### 4.0 Cloud Abstraction Architecture
+### 5.0 Cloud Abstraction Architecture
 
-> **Note:** LeRobot has [async inference](https://huggingface.co/docs/lerobot/en/async) for remote GPU deployment,
+> **Note:** LeRobot has [async inference](https://huggingface.co/docs/lerobot/en/async) for deployment,
 > but **no built-in cloud training** ([issue #2172](https://github.com/huggingface/lerobot/issues/2172)).
-> We build our own training abstraction here.
-
-We use a **provider-agnostic abstraction** so training can run on any cloud:
 
 ```
 xlerobot_cloud/
 ├── __init__.py
 ├── base.py              # Abstract CloudProvider interface
-├── config.py            # TrainingConfig dataclass
+├── config.py            # TrainingConfig, InferenceConfig
 ├── providers/
-│   ├── __init__.py
-│   ├── modal_provider.py    # Modal implementation (default)
+│   ├── modal_provider.py    # Modal (default)
 │   ├── runpod_provider.py   # RunPod (future)
 │   └── lambda_provider.py   # Lambda Labs (future)
-└── cli.py               # Unified CLI: xlerobot-train --provider=modal
+└── cli.py               # xlerobot-train, xlerobot-serve
 ```
 
-**Abstract Interface (`base.py`):**
+### 5.1 Training Config
 
 ```python
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
+from typing import Optional
 
 @dataclass
 class TrainingConfig:
+    # Dataset
     dataset_repo_id: str
-    output_repo_id: str
-    policy_type: str = "pi0"
+
+    # Model
+    policy_type: str = "pi05"  # NOT "pi0"!
     pretrained_path: str = "lerobot/pi05_base"
+    output_repo_id: Optional[str] = None
+
+    # Training
     batch_size: int = 32
     steps: int = 3000
+    learning_rate: float = 1e-5
+
+    # Hardware
     gpu_type: str = "H100"
+    num_gpus: int = 1
     timeout_hours: int = 2
 
-class CloudProvider(ABC):
-    @abstractmethod
-    def setup(self) -> None:
-        """Authenticate and configure provider."""
-        pass
-
-    @abstractmethod
-    def train(self, config: TrainingConfig) -> str:
-        """Launch training job. Returns job ID."""
-        pass
-
-    @abstractmethod
-    def get_status(self, job_id: str) -> dict:
-        """Get job status."""
-        pass
-
-    @abstractmethod
-    def download_model(self, job_id: str, output_path: str) -> None:
-        """Download trained model."""
-        pass
+    # Checkpointing
+    save_freq: int = 500
+    resume_from: Optional[str] = None
 ```
 
-**Usage:**
-
-```bash
-# Train with Modal (default)
-xlerobot-train --provider=modal --dataset=user/xlerobot_laundry
-
-# Train with RunPod (future)
-xlerobot-train --provider=runpod --dataset=user/xlerobot_laundry
-```
-
----
-
-### 4.1 Modal Provider Implementation
+### 5.2 Modal Training Script
 
 Create `xlerobot_cloud/providers/modal_provider.py`:
 
 ```python
 import modal
-from ..base import CloudProvider, TrainingConfig
 
-class ModalProvider(CloudProvider):
-    def __init__(self):
-        self.app = modal.App("xlerobot-training")
-        self.image = (
-            modal.Image.debian_slim(python_version="3.10")
-            .pip_install("torch", "transformers", "accelerate")
-            .pip_install("lerobot[pi]@git+https://github.com/huggingface/lerobot.git")
-        )
+app = modal.App("xlerobot-training")
 
-    def setup(self) -> None:
-        # modal setup is done via CLI: `modal setup`
-        pass
+image = (
+    modal.Image.debian_slim(python_version="3.10")
+    .apt_install("git")
+    .pip_install(
+        "torch>=2.0",
+        "transformers",
+        "accelerate",
+        "wandb",
+        "lerobot[pi]@git+https://github.com/huggingface/lerobot.git"
+    )
+)
 
-    def train(self, config: TrainingConfig) -> str:
-        @self.app.function(
-            image=self.image,
-            gpu=config.gpu_type,
-            timeout=config.timeout_hours * 3600,
-            secrets=[modal.Secret.from_name("huggingface-token")]
-        )
-        def _train():
-            import subprocess
-            subprocess.run([
-                "python", "-m", "lerobot.train",
-                f"--policy.type={config.policy_type}",
-                f"--policy.pretrained_path={config.pretrained_path}",
-                f"--dataset.repo_id={config.dataset_repo_id}",
-                "--output_dir=/outputs/model",
-                f"--batch_size={config.batch_size}",
-                f"--steps={config.steps}",
-                "--policy.dtype=bfloat16",
-                "--policy.gradient_checkpointing=true",
-            ], check=True)
+@app.function(
+    image=image,
+    gpu="H100",
+    timeout=7200,
+    secrets=[modal.Secret.from_name("huggingface-token")],
+    volumes={"/outputs": modal.Volume.from_name("xlerobot-outputs", create_if_missing=True)}
+)
+def train(
+    dataset_repo_id: str,
+    output_repo_id: str,
+    steps: int = 3000,
+    batch_size: int = 32,
+):
+    import subprocess
+    import os
 
-            # Push to HuggingFace
-            subprocess.run([
-                "huggingface-cli", "upload",
-                config.output_repo_id,
-                "/outputs/model"
-            ], check=True)
+    os.environ["HF_TOKEN"] = os.environ.get("HF_TOKEN", "")
 
-        with self.app.run():
-            _train.remote()
-        return "modal-job"  # Modal doesn't expose job IDs easily
+    cmd = [
+        "python", "-m", "lerobot.scripts.train",
+        f"--dataset.repo_id={dataset_repo_id}",
+        "--policy.type=pi05",
+        "--policy.pretrained_path=lerobot/pi05_base",
+        "--output_dir=/outputs/model",
+        f"--batch_size={batch_size}",
+        f"--steps={steps}",
+        "--policy.dtype=bfloat16",
+        "--policy.gradient_checkpointing=true",
+        "--policy.compile_model=true",
+        "--save_freq=500",  # Checkpoint every 500 steps
+    ]
 
-    def get_status(self, job_id: str) -> dict:
-        # Modal runs synchronously in .remote()
-        return {"status": "completed"}
+    result = subprocess.run(cmd, check=True)
 
-    def download_model(self, job_id: str, output_path: str) -> None:
-        # Model is pushed to HuggingFace, download from there
-        pass
+    # Push to HuggingFace
+    subprocess.run([
+        "huggingface-cli", "upload",
+        output_repo_id,
+        "/outputs/model",
+        "--repo-type=model"
+    ], check=True)
+
+    return {"status": "completed", "repo_id": output_repo_id}
+
+@app.local_entrypoint()
+def main(
+    dataset: str,
+    output: str,
+    steps: int = 3000,
+    batch_size: int = 32,
+):
+    result = train.remote(dataset, output, steps, batch_size)
+    print(f"Training complete: {result}")
 ```
 
-### 4.2 Run Training
+### 5.3 Run Training
 
 ```bash
-# First time setup
-pip install modal
-modal setup
-modal secret create huggingface-token HF_TOKEN=hf_xxxxx
-
-# Run training via abstraction
-xlerobot-train \
-  --provider=modal \
-  --dataset=${HF_USER}/xlerobot_laundry_augmented \
-  --output=${HF_USER}/pi05_xlerobot_policy \
-  --gpu=H100 \
+# Single GPU
+modal run xlerobot_cloud/providers/modal_provider.py \
+  --dataset=${HF_USER}/xlerobot_task \
+  --output=${HF_USER}/pi05_xlerobot \
   --steps=3000
 
-# Or run Modal directly (legacy)
-modal run xlerobot_cloud/providers/modal_provider.py
+# Multi-GPU (modify modal script to use gpu="H100:2")
+modal run xlerobot_cloud/providers/modal_provider.py \
+  --dataset=${HF_USER}/xlerobot_task \
+  --output=${HF_USER}/pi05_xlerobot \
+  --steps=1500 \  # Halved for 2x GPUs
+  --batch_size=32  # Effective: 64
 ```
 
-### 4.3 Training Parameters
+### 5.4 Local Multi-GPU Training (Alternative)
 
-| Parameter | Recommended | Notes |
-|-----------|-------------|-------|
-| `batch_size` | 32 | Reduce if OOM |
-| `steps` | 3000-5000 | 50 episodes × 60 steps/ep |
-| `learning_rate` | 1e-5 | Default is fine |
-| `dtype` | bfloat16 | Saves memory |
-| `gradient_checkpointing` | true | Saves memory |
+```bash
+# If you have local GPUs
+accelerate launch \
+  --multi_gpu \
+  --num_processes=2 \
+  --mixed_precision=bf16 \
+  $(which lerobot-train) \
+  --dataset.repo_id=${HF_USER}/xlerobot_task \
+  --policy.type=pi05 \
+  --policy.pretrained_path=lerobot/pi05_base \
+  --policy.repo_id=${HF_USER}/pi05_xlerobot \
+  --output_dir=outputs/pi05_xlerobot \
+  --batch_size=16 \
+  --steps=1500 \
+  --policy.gradient_checkpointing=true
+```
+
+### 5.5 Training Parameters
+
+| Parameter | Single H100 | 2× A100 40GB | Notes |
+|-----------|-------------|--------------|-------|
+| `batch_size` | 32 | 16 (eff: 32) | Reduce if OOM |
+| `steps` | 3000 | 1500 | Scale with GPUs |
+| `learning_rate` | 1e-5 | 1e-5 | Don't scale |
+| `save_freq` | 500 | 500 | Checkpoint frequency |
+
+### 5.6 Error Handling & Resume
+
+```bash
+# Resume from checkpoint
+modal run xlerobot_cloud/providers/modal_provider.py \
+  --dataset=${HF_USER}/xlerobot_task \
+  --output=${HF_USER}/pi05_xlerobot \
+  --resume=/outputs/model/checkpoint-1500
+```
 
 ---
 
-## Phase 5: Deployment
+## Phase 6: Validation & Evaluation
 
-> LeRobot has built-in [async inference](https://huggingface.co/docs/lerobot/en/async) for remote GPU deployment.
-
-### 5.1 Local Deployment (if GPU available)
+### 6.1 Simulation Evaluation (Quick)
 
 ```bash
-python -m lerobot.record \
+# Test on LIBERO benchmark
+python -m lerobot.scripts.eval \
+  --policy.type=pi05 \
+  --policy.pretrained_path=${HF_USER}/pi05_xlerobot \
+  --env.type=libero \
+  --env.task=libero_spatial \
+  --eval.n_episodes=10
+```
+
+### 6.2 Real Robot Smoke Test
+
+```bash
+# Quick test with 5 episodes
+lerobot-record \
   --robot.type=xlerobot \
   --robot.port1=/dev/ttyACM0 \
   --robot.port2=/dev/ttyACM1 \
-  --policy.path=${HF_USER}/pi05_xlerobot_policy
+  --policy.type=pi05 \
+  --policy.pretrained_path=${HF_USER}/pi05_xlerobot \
+  --dataset.repo_id=${HF_USER}/pi05_eval \
+  --dataset.num_episodes=5 \
+  --dataset.single_task="Fold the shirt"
 ```
 
-### 5.2 Remote GPU Server (Recommended for π0.5)
+### 6.3 Success Metrics
 
-π0.5 is heavy (~3B params), so use **LeRobot's async inference**:
+- [ ] **Simulation success rate > 80%** on similar tasks
+- [ ] **Real robot completes 3/5 test episodes**
+- [ ] **No erratic movements** during execution
+- [ ] **Inference latency < 100ms** per action chunk
 
-**On GPU Server (Modal/RunPod/Lambda):**
+---
+
+## Phase 7: Deployment
+
+### 7.1 Local GPU Deployment
+
 ```bash
-# Using lerobot's built-in policy server
+# If you have local GPU (RTX 3090+, 24GB+ VRAM)
+lerobot-record \
+  --robot.type=xlerobot \
+  --robot.port1=/dev/ttyACM0 \
+  --robot.port2=/dev/ttyACM1 \
+  --policy.type=pi05 \
+  --policy.pretrained_path=${HF_USER}/pi05_xlerobot \
+  --policy.device=cuda
+```
+
+### 7.2 Remote GPU with Async Inference (Recommended)
+
+π0.5 is ~3B params, async inference eliminates latency.
+
+**On GPU Server (Modal/RunPod):**
+
+```bash
+# Start policy server
 python -m lerobot.async_inference.policy_server \
   --host=0.0.0.0 \
-  --port=8080 \
-  --policy.path=${HF_USER}/pi05_xlerobot_policy
+  --port=8080
 ```
 
 **On Robot (XLeRobot):**
+
 ```bash
-# Stream to remote GPU for inference
-python -m lerobot.record \
+python -m lerobot.async_inference.robot_client \
+  --server_address=GPU_SERVER_IP:8080 \
   --robot.type=xlerobot \
-  --policy.remote_server=http://GPU_SERVER_IP:8080
+  --robot.port1=/dev/ttyACM0 \
+  --robot.port2=/dev/ttyACM1 \
+  --robot.cameras='{...}' \
+  --policy_type=pi05 \
+  --pretrained_name_or_path=${HF_USER}/pi05_xlerobot \
+  --policy_device=cuda \
+  --actions_per_chunk=50 \
+  --chunk_size_threshold=0.5 \
+  --task="Fold the shirt"
 ```
 
-See [LeRobot async docs](https://huggingface.co/docs/lerobot/en/async#tuning-async-inference-for-your-setup) for tuning latency.
+### 7.3 Modal Inference Server
+
+```python
+# xlerobot_cloud/providers/modal_inference.py
+import modal
+
+app = modal.App("xlerobot-inference")
+
+image = modal.Image.debian_slim(python_version="3.10").pip_install(
+    "lerobot[pi,async]@git+https://github.com/huggingface/lerobot.git"
+)
+
+@app.function(
+    image=image,
+    gpu="A100",
+    keep_warm=1,  # Keep 1 instance warm for low latency
+    secrets=[modal.Secret.from_name("huggingface-token")]
+)
+@modal.web_server(port=8080)
+def serve():
+    import subprocess
+    subprocess.run([
+        "python", "-m", "lerobot.async_inference.policy_server",
+        "--host=0.0.0.0",
+        "--port=8080"
+    ])
+```
+
+---
+
+## Rollback Plan
+
+### If Training Fails
+
+1. **Check logs** for OOM or NaN loss
+2. **Reduce batch_size** (32 → 16 → 8)
+3. **Resume from checkpoint** with `--resume`
+4. **Try LoRA** instead of full fine-tune
+
+### If Deployment Fails
+
+1. **Test with ACT first** (lighter model)
+2. **Check async latency** with `--debug_visualize_queue_size=true`
+3. **Reduce actions_per_chunk** (50 → 25)
+4. **Fallback to teleoperation** for demos
+
+### Quick Rollback Commands
+
+```bash
+# Revert to base model
+--policy.pretrained_path=lerobot/pi05_base
+
+# Use smaller model
+--policy.type=act
+
+# Disable cloud, run local
+python examples/5_xlerobot_teleop_xbox.py
+```
 
 ---
 
 ## Cost Estimate
 
-| Item | Cost |
-|------|------|
-| Modal H100 (2 hours) | ~$8 |
-| HuggingFace storage | Free |
-| Total | **~$10** |
+| Phase | Resource | Cost |
+|-------|----------|------|
+| Training (H100, 2hr) | Modal | ~$8 |
+| Inference (A100, 1hr) | Modal | ~$2 |
+| HuggingFace storage | Hub | Free |
+| **Total** | | **~$10-15** |
 
 ---
 
 ## Checkpoints
 
-- [ ] lerobot + pi dependencies installed
-- [ ] Cameras detected (3 cameras)
-- [ ] VR or leader arms working
+### Phase 1: Setup
+- [ ] lerobot 0.4.2+ installed
+- [ ] `pip install -e ".[pi,async]"` complete
+- [ ] HuggingFace login working
+- [ ] Modal account configured
+
+### Phase 2: Hardware
+- [ ] All 3 cameras detected
+- [ ] Camera config saved
+- [ ] Robot motors responding
+
+### Phase 3: Data Collection
 - [ ] 50+ episodes recorded
-- [ ] Dataset uploaded to HuggingFace
-- [ ] Modal account + secrets configured
-- [ ] Training completed
-- [ ] Policy deployed and tested
+- [ ] Dataset pushed to HuggingFace
+- [ ] Video playback verified
+
+### Phase 4: Data Prep
+- [ ] Quantile stats added
+- [ ] (Optional) Augmentation complete
+
+### Phase 5: Training
+- [ ] Training launched
+- [ ] Checkpoints saving
+- [ ] Training complete
+- [ ] Model pushed to HuggingFace
+
+### Phase 6: Validation
+- [ ] Simulation eval > 80%
+- [ ] Real robot test passed
+
+### Phase 7: Deployment
+- [ ] Inference server running
+- [ ] Robot executing policy
+- [ ] Latency acceptable
 
 ---
 
 ## References
 
-- [π0.5 OpenPI Repo](https://github.com/Physical-Intelligence/openpi)
-- [LeRobot π0 Docs](https://huggingface.co/docs/lerobot/pi0)
-- [XLeRobot VLA Training](https://xlerobot.readthedocs.io/en/latest/software/getting_started/RL_VLA.html)
-- [Teddy Warner's π0 Tutorial](https://teddywarner.org/Projects/pi0/)
-- [Modal GPU Docs](https://modal.com/docs/guide/gpu)
+- [π0.5 Docs](https://huggingface.co/docs/lerobot/en/pi05) - Official LeRobot π0.5 documentation
+- [lerobot/pi05_base](https://huggingface.co/lerobot/pi05_base) - Base model checkpoint
+- [OpenPI Repo](https://github.com/Physical-Intelligence/openpi) - Physical Intelligence source
+- [LeRobot Async Inference](https://huggingface.co/docs/lerobot/en/async) - Remote GPU deployment
+- [LeRobot Multi-GPU](https://huggingface.co/docs/lerobot/multi_gpu_training) - Distributed training
+- [XLeRobot VLA Guide](https://xlerobot.readthedocs.io/en/latest/software/getting_started/RL_VLA.html) - XLeRobot-specific docs
+- [Modal GPU Docs](https://modal.com/docs/guide/gpu) - Cloud training setup
