@@ -414,11 +414,11 @@ Step 5000: 0.112
 
 ---
 
-## Remote Deployment (Raspberry Pi + GPU Laptop)
+## Remote Deployment (Raspberry Pi + Modal)
 
-π0.5 is a 7GB model requiring GPU inference. The only practical deployment uses:
-- **Raspberry Pi**: Robot control (motors, cameras)
-- **Laptop/Desktop with GPU**: Policy inference
+π0.5 is a 7GB model requiring GPU inference. Deployment uses:
+- **Raspberry Pi**: Robot control (motors, cameras) via `xlerobot_host.py`
+- **Modal (H100)**: π0.5 inference in the cloud
 
 ### Architecture
 
@@ -441,16 +441,16 @@ Step 5000: 0.112
 │              └───────────────┘                                  │
 └─────────────────────────────────────────────────────────────────┘
                            │
-                      WiFi/Ethernet
+                       Internet
                            │
 ┌─────────────────────────────────────────────────────────────────┐
-│                  Laptop with GPU                                │
+│                     Modal (H100 GPU)                            │
 │                                                                 │
-│  run_policy_remote.py                                           │
+│  modal_inference.py                                             │
 │  ┌───────────────┐      ┌─────────────────────────────────┐    │
 │  │  ZMQ Client   │      │  π0.5 Policy (7GB)              │    │
-│  │  xlerobot_    │◄────►│  - Preprocessor                 │    │
-│  │  client.py    │      │  - PI05Policy.select_action()   │    │
+│  │  (connects to │◄────►│  - Preprocessor                 │    │
+│  │   Pi host)    │      │  - PI05Policy.select_action()   │    │
 │  └───────────────┘      │  - Postprocessor                │    │
 │                         └─────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
@@ -460,7 +460,7 @@ Step 5000: 0.112
 
 ```bash
 # On Raspberry Pi
-# 1. Install lerobot (CPU only, no [pi] extras)
+# 1. Install lerobot (CPU only, no [pi] extras needed)
 pip install "lerobot @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
 
 # 2. Set USB permissions
@@ -470,17 +470,11 @@ sudo chmod 666 /dev/ttyACM0 /dev/ttyACM1
 python -m lerobot.robots.xlerobot.xlerobot_host
 ```
 
-### GPU Laptop Setup
+### Modal Inference Setup
 
 ```bash
-# On laptop with GPU
-# 1. Install lerobot with π0.5 support
-pip install "lerobot[pi] @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
-
-# 2. Apply OpenPI patches (see Installation section)
-
-# 3. Run policy client
-python run_policy_remote.py --remote-ip <PI_IP_ADDRESS>
+# On your local machine (triggers Modal)
+modal run modal_train.py --inference --pi-host <PI_PUBLIC_IP>
 ```
 
 ### Configuration
@@ -495,35 +489,25 @@ class XLerobotHostConfig:
     connection_time_s: float = 3600    # Session duration
     watchdog_timeout_ms: int = 1000    # Stop if no commands
     max_loop_freq_hz: float = 30       # Control loop rate
-
-@dataclass
-class XLerobotClientConfig:
-    remote_ip: str = "192.168.1.100"   # Pi IP address
-    port_zmq_cmd: int = 5555
-    port_zmq_observations: int = 5556
-    polling_timeout_ms: int = 100
-    connect_timeout_s: float = 10
 ```
 
 ### Network Requirements
 
 | Parameter | Requirement |
 |-----------|-------------|
-| Latency | < 50ms recommended |
+| Pi | Public IP or port forwarding (ports 5555, 5556) |
+| Latency | < 100ms (Modal adds ~20-50ms) |
 | Bandwidth | ~5 Mbps (JPEG-compressed images) |
 | Protocol | ZMQ over TCP |
-| Ports | 5555 (commands), 5556 (observations) |
 
 ### Data Flow
 
-1. **Pi → Laptop** (Observations):
+1. **Pi → Modal** (Observations):
    - Joint positions (14 floats)
    - Camera frames (JPEG base64 encoded)
-   - Velocity state
 
-2. **Laptop → Pi** (Actions):
+2. **Modal → Pi** (Actions):
    - Target joint positions (JSON)
-   - Velocity commands (if using base)
 
 ---
 
