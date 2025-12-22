@@ -414,6 +414,119 @@ Step 5000: 0.112
 
 ---
 
+## Remote Deployment (Raspberry Pi + GPU Laptop)
+
+π0.5 is a 7GB model requiring GPU inference. The only practical deployment uses:
+- **Raspberry Pi**: Robot control (motors, cameras)
+- **Laptop/Desktop with GPU**: Policy inference
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                     Raspberry Pi (Robot)                        │
+│                                                                 │
+│  xlerobot_host.py                                               │
+│  ┌─────────────────┐    ┌─────────────────┐                    │
+│  │  Motor Control  │    │  Camera Capture │                    │
+│  │  (STS3215 bus)  │    │  (OpenCV)       │                    │
+│  └────────┬────────┘    └────────┬────────┘                    │
+│           │                      │                              │
+│           └──────────┬───────────┘                              │
+│                      ▼                                          │
+│              ┌───────────────┐                                  │
+│              │  ZMQ Server   │                                  │
+│              │  Port 5555    │◄─── Commands (actions)           │
+│              │  Port 5556    │───► Observations (state+images)  │
+│              └───────────────┘                                  │
+└─────────────────────────────────────────────────────────────────┘
+                           │
+                      WiFi/Ethernet
+                           │
+┌─────────────────────────────────────────────────────────────────┐
+│                  Laptop with GPU                                │
+│                                                                 │
+│  run_policy_remote.py                                           │
+│  ┌───────────────┐      ┌─────────────────────────────────┐    │
+│  │  ZMQ Client   │      │  π0.5 Policy (7GB)              │    │
+│  │  xlerobot_    │◄────►│  - Preprocessor                 │    │
+│  │  client.py    │      │  - PI05Policy.select_action()   │    │
+│  └───────────────┘      │  - Postprocessor                │    │
+│                         └─────────────────────────────────┘    │
+└─────────────────────────────────────────────────────────────────┘
+```
+
+### Raspberry Pi Setup
+
+```bash
+# On Raspberry Pi
+# 1. Install lerobot (CPU only, no [pi] extras)
+pip install "lerobot @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
+
+# 2. Set USB permissions
+sudo chmod 666 /dev/ttyACM0 /dev/ttyACM1
+
+# 3. Run host (controls robot, streams observations)
+python -m lerobot.robots.xlerobot.xlerobot_host
+```
+
+### GPU Laptop Setup
+
+```bash
+# On laptop with GPU
+# 1. Install lerobot with π0.5 support
+pip install "lerobot[pi] @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
+
+# 2. Apply OpenPI patches (see Installation section)
+
+# 3. Run policy client
+python run_policy_remote.py --remote-ip <PI_IP_ADDRESS>
+```
+
+### Configuration
+
+Edit `config_xlerobot.py` for remote settings:
+
+```python
+@dataclass
+class XLerobotHostConfig:
+    port_zmq_cmd: int = 5555           # Receive actions
+    port_zmq_observations: int = 5556  # Send observations
+    connection_time_s: float = 3600    # Session duration
+    watchdog_timeout_ms: int = 1000    # Stop if no commands
+    max_loop_freq_hz: float = 30       # Control loop rate
+
+@dataclass
+class XLerobotClientConfig:
+    remote_ip: str = "192.168.1.100"   # Pi IP address
+    port_zmq_cmd: int = 5555
+    port_zmq_observations: int = 5556
+    polling_timeout_ms: int = 100
+    connect_timeout_s: float = 10
+```
+
+### Network Requirements
+
+| Parameter | Requirement |
+|-----------|-------------|
+| Latency | < 50ms recommended |
+| Bandwidth | ~5 Mbps (JPEG-compressed images) |
+| Protocol | ZMQ over TCP |
+| Ports | 5555 (commands), 5556 (observations) |
+
+### Data Flow
+
+1. **Pi → Laptop** (Observations):
+   - Joint positions (14 floats)
+   - Camera frames (JPEG base64 encoded)
+   - Velocity state
+
+2. **Laptop → Pi** (Actions):
+   - Target joint positions (JSON)
+   - Velocity commands (if using base)
+
+---
+
 ## References
 
 - [LeRobot Documentation](https://huggingface.co/docs/lerobot)
