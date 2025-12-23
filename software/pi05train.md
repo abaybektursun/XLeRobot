@@ -414,11 +414,12 @@ Step 5000: 0.112
 
 ---
 
-## Remote Deployment (Raspberry Pi + Modal)
+## Deployment (Raspberry Pi + Laptop)
 
-π0.5 is a 7GB model requiring GPU inference. Deployment uses:
+π0.5 is a 7GB model requiring GPU. Deployment uses:
 - **Raspberry Pi**: Robot control (motors, cameras) via `xlerobot_host.py`
-- **Modal (H100)**: π0.5 inference in the cloud
+- **Laptop with GPU**: π0.5 inference via `run_policy_local.py`
+- **Modal**: Training only (not inference)
 
 ### Architecture
 
@@ -436,78 +437,130 @@ Step 5000: 0.112
 │                      ▼                                          │
 │              ┌───────────────┐                                  │
 │              │  ZMQ Server   │                                  │
-│              │  Port 5555    │◄─── Commands (actions)           │
-│              │  Port 5556    │───► Observations (state+images)  │
+│              │  Port 5555    │◄─── Actions from laptop          │
+│              │  Port 5556    │───► Observations to laptop       │
 │              └───────────────┘                                  │
 └─────────────────────────────────────────────────────────────────┘
                            │
-                       Internet
+                     LAN (< 5ms)
                            │
 ┌─────────────────────────────────────────────────────────────────┐
-│                     Modal (H100 GPU)                            │
+│                     Laptop (GPU)                                │
 │                                                                 │
-│  modal_inference.py                                             │
+│  run_policy_local.py                                            │
 │  ┌───────────────┐      ┌─────────────────────────────────┐    │
 │  │  ZMQ Client   │      │  π0.5 Policy (7GB)              │    │
-│  │  (connects to │◄────►│  - Preprocessor                 │    │
-│  │   Pi host)    │      │  - PI05Policy.select_action()   │    │
+│  │  XLerobotClient│◄───►│  - Preprocessor                 │    │
+│  │               │      │  - PI05Policy.select_action()   │    │
 │  └───────────────┘      │  - Postprocessor                │    │
 │                         └─────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────┘
 ```
 
-### Raspberry Pi Setup
+### Step 1: Download Model from Modal
+
+```bash
+# On laptop - download trained model from Modal volume
+modal run modal_train.py --download-model
+# Model saved to: software/trained_model/
+```
+
+### Step 2: Raspberry Pi Setup
 
 ```bash
 # On Raspberry Pi
-# 1. Install lerobot (CPU only, no [pi] extras needed)
+# 1. Install lerobot (CPU only)
 pip install "lerobot @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
+pip install pyzmq
 
 # 2. Set USB permissions
 sudo chmod 666 /dev/ttyACM0 /dev/ttyACM1
 
-# 3. Run host (controls robot, streams observations)
+# 3. Run host (controls robot, streams observations over ZMQ)
 python -m lerobot.robots.xlerobot.xlerobot_host
 ```
 
-### Modal Inference Setup
+### Step 3: Laptop Setup
 
 ```bash
-# On your local machine (triggers Modal)
-modal run modal_train.py --inference --pi-host <PI_PUBLIC_IP>
+# On laptop with GPU
+# 1. Install lerobot with π0.5 support
+pip install "lerobot[pi] @ git+https://github.com/abaybektursun/lerobot.git@feature/xlerobot"
+pip install pyzmq
+
+# 2. Apply OpenPI patches (see Installation section above)
+
+# 3. Run inference (connects to Pi over LAN)
+python run_policy_local.py --pi-ip <PI_IP_ADDRESS>
 ```
 
 ### Configuration
 
-Edit `config_xlerobot.py` for remote settings:
+Edit `config_xlerobot.py`:
 
 ```python
 @dataclass
 class XLerobotHostConfig:
     port_zmq_cmd: int = 5555           # Receive actions
     port_zmq_observations: int = 5556  # Send observations
-    connection_time_s: float = 3600    # Session duration
-    watchdog_timeout_ms: int = 1000    # Stop if no commands
-    max_loop_freq_hz: float = 30       # Control loop rate
+    watchdog_timeout_ms: int = 500     # Stop if no commands
+    max_loop_freq_hz: int = 30         # Control loop rate
 ```
 
 ### Network Requirements
 
 | Parameter | Requirement |
 |-----------|-------------|
-| Pi | Public IP or port forwarding (ports 5555, 5556) |
-| Latency | < 100ms (Modal adds ~20-50ms) |
-| Bandwidth | ~5 Mbps (JPEG-compressed images) |
-| Protocol | ZMQ over TCP |
+| Connection | Same LAN (WiFi or Ethernet) |
+| Latency | < 5ms (local network) |
+| Bandwidth | ~5 Mbps |
+| Ports | 5555, 5556 (ZMQ) |
+
+### Credentials
+
+| Device | Credentials Needed |
+|--------|-------------------|
+| Raspberry Pi | None (just USB permissions) |
+| Laptop | None (model is local file) |
+| Modal | HuggingFace token (training only) |
 
 ### Data Flow
 
-1. **Pi → Modal** (Observations):
-   - Joint positions (14 floats)
-   - Camera frames (JPEG base64 encoded)
+```
+Pi                              Laptop
+─────────────────               ─────────────────
+1. Read motors    ──state───►   2. Preprocess
+   Read camera    ──image───►      Normalize
 
-2. **Modal → Pi** (Actions):
-   - Target joint positions (JSON)
+                                3. π0.5 inference
+                                   (GPU, ~50ms)
+
+4. Execute action ◄──action──   4. Postprocess
+   Move motors                     Safety clamp
+```
+
+### Usage Example
+
+```bash
+# Terminal 1 (on Pi)
+$ python -m lerobot.robots.xlerobot.xlerobot_host
+Configuring Xlerobot
+Connecting Xlerobot
+Starting HostAgent
+Waiting for commands...
+
+# Terminal 2 (on laptop)
+$ python run_policy_local.py --pi-ip 192.168.1.42 --steps 300
+Using device: cuda
+Loading π0.5 policy from trained_model_pi05/pretrained_model
+Policy loaded on cuda
+Connecting to Pi at 192.168.1.42...
+Connected!
+Starting inference loop: 300 steps at 30.0 FPS
+Step 0/300
+  State:  [100.0, 31.1, -65.8]...
+  Action: [95.0, 35.0, -60.0]...
+```
 
 ---
 
