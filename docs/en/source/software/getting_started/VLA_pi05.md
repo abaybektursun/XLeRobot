@@ -23,6 +23,20 @@ The pi0.5 implementation includes optimizations for data collection scripts and 
 - **Branch**: `biso101 training_support`
 - **Features**: Training support for bimanual SO-101 configuration
 
+## Dataset
+
+The collected dataset for pi0.5 training is available on Hugging Face:
+
+- **Dataset**: [xuweiwu/bimanual-toy-box-cleanup](https://huggingface.co/datasets/xuweiwu/bimanual-toy-box-cleanup)
+
+You can visualize the dataset using the LeRobot dataset visualization tool:
+
+```bash
+lerobot-visualize-dataset xuweiwu/bimanual-toy-box-cleanup
+```
+
+Alternatively, you can view it directly on Hugging Face using the [lerobot/visualize_dataset](https://huggingface.co/spaces/lerobot/visualize_dataset) space.
+
 ## Status
 
 A minor PR has been created to optimize the existing data collection script workflow. Additional changes that may be more difficult to merge are currently available in local branches for reference.

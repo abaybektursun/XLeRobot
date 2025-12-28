@@ -34,13 +34,11 @@ The VLA tutorials below came from different teams in the community. Thanks a lot
 
 ### [VLA (1) ACT](getting_started/VLA_ACT.md)
 
-### [VLA (2) SmolVLA)](getting_started/VLA_smol.md)
+### [VLA (2) SmolVLA and more](getting_started/VLA_smol.md)
 
-### [VLA (3) pi0.5)](getting_started/VLA_pi05.md)
+### [VLA (3) pi0.5](getting_started/VLA_pi05.md)
 
 ### [Reinforcenment Learning (RL)](getting_started/RL.md)
-
-
 
 ### [Raspberri Pi Setup](getting_started/raspberry_pi_setup.md)
 
