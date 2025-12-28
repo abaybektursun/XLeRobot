@@ -4,7 +4,8 @@ This document explains how to use **XLeRobot** for:
 1. Training and running **SmolVLA** with a **bimanual SO-101** setup and **three-camera data collection**
 2. Training and running **ACT (Action Chunking with Transformers)** policy
 3. Using **VR Control** for XLeRobot
-
+<img src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/demoshow.gif?raw=true" width="80%" alt="VR Demo GIF"/>
+<img src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/demoshow2.gif?raw=true" width="80%" alt="VR Demo GIF"/>
 ---
 
 ## 1) Overview
@@ -17,6 +18,8 @@ XLeRobot is a LeRobot-based setup that adds:
   - `front_cam`
   - `hand_cam`
   - `side_cam`
+ <img width="734" height="639" alt="image" src="https://github.com/user-attachments/assets/051b57fc-12ee-41a0-a2ff-78d207baa596" />
+
 
 ### References
 - [SmolVLA base model](https://huggingface.co/lerobot/smolvla_base)
@@ -38,7 +41,7 @@ After training on **~20 episodes**, XLeRobot can:
 3. Place the object into the drawer
 4. Push the drawer in
 
-<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/side-view.gif" width="100%" alt="VR Demo GIF"/>
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/side-view.gif" width="80%" alt="VR Demo GIF"/>
 
 **Key aspects:**
 - **One-shot grasp** of the drawer handle (avoid jitter during data collection)
@@ -51,7 +54,7 @@ After training on **~20 episodes**, XLeRobot can:
 2. Grasp the pencil case handle and stabilize the case
 3. Pull the zipper tab to open the zipper smoothly
 
-<img src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/unzip-bagger.gif?raw=true" width="100%" alt="VR Demo GIF"/>
+<img src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/unzip-bagger.gif?raw=true" width="80%" alt="VR Demo GIF"/>
 
 **Key difficulties:**
 - The zipper pull is often in a **top-down camera blind spot**, requiring **one-shot** grasp (avoid re-grasp)
@@ -295,9 +298,15 @@ python -m lerobot.record \
 
 ## 8) VR Control for XLeRobot
 
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/VR_DEMO_SHOW.gif" width="80%" alt="VR Demo GIF"/>
+
+
+
 ### Robot: Rumi
 Rumi is a new-generation bimanual robot with a liftable chassis:
 [Rumi](https://www.makermods.ai/rumi)
+
+![RUMI_HEAD_VR](https://github.com/user-attachments/assets/82b79de8-4286-4284-810f-b57308494bf0)
 
 ### Repositories
 1. [VR controller repo](https://github.com/IIMFINE/lerobot_vr_controller.git)
@@ -313,7 +322,7 @@ Rumi is a new-generation bimanual robot with a liftable chassis:
 For VR control, follow the repository's README to configure VR devices, ROS 2 nodes, and robot drivers.
 
 ---
-
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/VR_DEMO_SHOW2.gif" width="80%" alt="VR Demo GIF"/>
 ## 9) Practical Tips / Common Pitfalls
 
 ### Data Quality
@@ -326,10 +335,12 @@ For tasks like drawers:
 - **Left arm:** stable pulling trajectory
 - **Right arm:** precise pick/place with minimal hesitation
 
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/VR_DEMO_SHOW3.gif" width="80%" alt="VR Demo GIF"/>
 ### Device Ports
 If ports change after reboot, consider using persistent udev rules to stabilize device naming.
-
 ---
+
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/VR_DEMO_SHOW4.gif" width="80%" alt="VR Demo GIF"/>
 
 ## 10) Quick Checklist
 
@@ -342,6 +353,11 @@ If ports change after reboot, consider using persistent udev rules to stabilize 
 - [ ] Inference uses the correct trained policy path
 
 ---
+
+<video width="100%" controls>
+  <source src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/makermod.mp4" type="video/mp4">
+  Your browser does not support the video tag.
+</video>
 
 ## Appendix: Links
 
