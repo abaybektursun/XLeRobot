@@ -1,4 +1,4 @@
-# VLA (2) ACT & SmolVLA
+# VLA (2) SmolVLA, ACT
 
 This document explains how to use **XLeRobot** for:
 1. Training and running **SmolVLA** with a **bimanual SO-101** setup and **three-camera data collection**
@@ -38,7 +38,7 @@ After training on **~20 episodes**, XLeRobot can:
 3. Place the object into the drawer
 4. Push the drawer in
 
-<img src="https://vector-wangel.github.io/XLeRobot-assets/videos/Community/makermod/side-view.gif?raw=true" width="100%" alt="VR Demo GIF"/>
+<img src="https://github.com/Vector-Wangel/XLeRobot-assets/blob/main/videos/Community/makermod/side-view.gif" width="100%" alt="VR Demo GIF"/>
 
 **Key aspects:**
 - **One-shot grasp** of the drawer handle (avoid jitter during data collection)
