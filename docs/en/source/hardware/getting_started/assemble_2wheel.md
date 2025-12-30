@@ -22,7 +22,7 @@ You can also buy parts yourself, what you need besides 3D printed parts and serv
 - 30 x 37 x 4mm Bearings
 - longer Motor cables (or extension kit)
 
-<img width="867" height="621" alt="image" src="https://github.com/user-attachments/assets/9d6f7c00-59b9-4999-a722-7fa8b5a56fdc" />
+![image](https://github.com/user-attachments/assets/9d6f7c00-59b9-4999-a722-7fa8b5a56fdc)
 
 
 Find STL file [Here](https://github.com/Vector-Wangel/XLeRobot/blob/main/hardware/XLeRobot_0_4_0_extra.stl)
@@ -33,7 +33,7 @@ Find STL file [Here](https://github.com/Vector-Wangel/XLeRobot/blob/main/hardwar
 
 Assembled picture:
 
-<img width="1341" height="789" alt="image" src="https://github.com/user-attachments/assets/7e71afda-1ec5-4b96-a199-42a0cd726226" />
+![image](https://github.com/user-attachments/assets/7e71afda-1ec5-4b96-a199-42a0cd726226)
 
 
 ### Brushless motor version
@@ -44,7 +44,7 @@ Pros: a fully stable and robust version with great performance.
 
 Cons: more complex wiring.
 
-<img width="798" height="366" alt="image" src="https://github.com/user-attachments/assets/f93b988c-6360-4bd9-a839-ea113a358fd4" />
+![image](https://github.com/user-attachments/assets/f93b988c-6360-4bd9-a839-ea113a358fd4)
 
 
 ![Animation (20)](https://github.com/user-attachments/assets/b035c51c-3217-4666-8dc2-9285fbefaa09)
