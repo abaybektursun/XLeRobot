@@ -103,7 +103,7 @@ Please refer to [CONTRIBUTING.md](CONTRIBUTING.md) for guidance on how to get in
 **Main Contributors**
 
 - [Gaotian/Vector Wang](https://vector-wangel.github.io/)
-- [Jiahao Wang](https://github.com/kahowang), [Chunbo Pan](https://github.com/IIMFINE), [QiLiu](https://github.com/Lakesenberg), [Isaac Sin](https://github.com/IsaacSinn), [Ryan Chen](https://github.com/RapidCAMO): [Makermods team](https://www.makermods.ai/), VLA and VR integration
+- [Jiahao Wang](https://github.com/kahowang), [Chunbo Pan](https://github.com/IIMFINE), [QiLiu](https://github.com/Lakesenberg), [Isaac Sin](https://github.com/IsaacSinn), [Ryan Chan](https://github.com/RapidCAMO): [MakerMods team](https://www.makermods.ai/), VLA and VR integration
 - [Zhuoyi Lu](https://lzhuoyi.github.io/Zhuoyi_Lu.github.io/): RL sim2real deploy, teleop on real robot (Xbox, VR, Joycon)
 - Yiyang Huang: RL & VLA implementation (ongoing)
 - YCP: WebUI for remote control (ongoing)
